@@ -1,0 +1,5 @@
+faster-whisper
+nemo_toolkit[asr]
+soundfile
+librosa
+numpy
