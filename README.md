@@ -1,6 +1,6 @@
 # OpenSono
 
-**Open-source audio transcription with speaker diarization.**
+**Open-source voice AI.**
 
 Transcribe audio files with word-level timestamps and automatic speaker identification using [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) and [NVIDIA NeMo Sortformer](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/speaker_diarization/intro.html).
 
