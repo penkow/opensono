@@ -14,11 +14,18 @@ Transcribe audio files with word-level timestamps and automatic speaker identifi
 - **Multiple output formats** — Plain text, VTT subtitles, or JSON
 - **Auto language detection** — Supports 99+ languages
 - **Colored terminal output** — Speaker-coded output for easy reading
+- **YouTube support** — Transcribe directly from a YouTube URL (requires [yt-dlp](https://github.com/yt-dlp/yt-dlp))
 
 ## Installation
 
 ```bash
 pip install opensono
+```
+
+Or install directly from GitHub (latest development version):
+
+```bash
+pip install git+https://github.com/penkow/opensono.git
 ```
 
 > **Note:** The NeMo toolkit has additional system dependencies. See the [NeMo installation guide](https://docs.nvidia.com/nemo-framework/user-guide/latest/getting-started.html) for details.
@@ -33,6 +40,14 @@ cd opensono
 pip install .
 ```
 
+### YouTube support (optional)
+
+To transcribe directly from YouTube URLs, install [yt-dlp](https://github.com/yt-dlp/yt-dlp):
+
+```bash
+pip install yt-dlp
+```
+
 ## Usage
 
 After installing, the `opensono` command is available anywhere in your terminal.
@@ -42,6 +57,14 @@ After installing, the `opensono` command is available anywhere in your terminal.
 ```bash
 opensono meeting.wav
 ```
+
+### Transcribe a YouTube video
+
+```bash
+opensono "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+The transcript is saved to a file named after the video title (e.g. `My Video Title.txt`).
 
 ### Transcription only (no diarization)
 

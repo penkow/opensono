@@ -7,6 +7,9 @@ Produces speaker-attributed transcription with word-level timestamps.
 
 import argparse
 import json
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import os
@@ -335,6 +338,78 @@ def output_json(chunks: list[TranscriptChunk]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# YouTube support
+# ---------------------------------------------------------------------------
+
+_YOUTUBE_RE = re.compile(
+    r"https?://(www\.|m\.|music\.)?(youtube\.com/(watch|shorts|live|embed)|youtu\.be/)",
+)
+
+
+def is_youtube_url(s: str) -> bool:
+    """Return True if *s* looks like a YouTube URL."""
+    return bool(_YOUTUBE_RE.match(s))
+
+
+def _sanitize_filename(name: str) -> str:
+    """Remove characters that are unsafe in file names."""
+    name = re.sub(r'[<>:"/\\|?*]', "", name)
+    name = name.strip(". ")
+    if len(name) > 200:
+        name = name[:200]
+    return name or "transcript"
+
+
+def download_youtube_audio(url: str) -> tuple[str, str]:
+    """Download audio from a YouTube URL via yt-dlp.
+
+    Returns ``(audio_path, video_title)``.
+    """
+    if not shutil.which("yt-dlp"):
+        print(
+            "Error: yt-dlp is required for YouTube URLs.\n"
+            "  Install it with:  pip install yt-dlp",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Fetch title
+    proc = subprocess.run(
+        ["yt-dlp", "--print", "title", url],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        print(f"Error fetching video info: {proc.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
+    title = proc.stdout.strip()
+
+    # Download & extract audio as WAV
+    tmp_dir = tempfile.mkdtemp(prefix="opensono_yt_")
+    out_template = os.path.join(tmp_dir, "audio.%(ext)s")
+
+    print(f"Downloading audio: {title}", file=sys.stderr)
+    proc = subprocess.run(
+        ["yt-dlp", "-x", "--audio-format", "wav", "-o", out_template, url],
+    )
+    if proc.returncode != 0:
+        print("Error: yt-dlp failed to download audio", file=sys.stderr)
+        sys.exit(1)
+
+    audio_file = os.path.join(tmp_dir, "audio.wav")
+    if not os.path.exists(audio_file):
+        # Fallback: pick whatever file yt-dlp wrote
+        files = os.listdir(tmp_dir)
+        if files:
+            audio_file = os.path.join(tmp_dir, files[0])
+        else:
+            print("Error: no audio file was downloaded", file=sys.stderr)
+            sys.exit(1)
+
+    return audio_file, title
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -364,7 +439,7 @@ def main():
         description="Transcribe and diarize audio using Faster Whisper + NeMo Sortformer",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("audio", help="Path to audio file")
+    parser.add_argument("audio", help="Path to audio file or YouTube URL")
     parser.add_argument(
         "--model-size", default="large-v3",
         help="Whisper model size (default: large-v3)",
@@ -397,10 +472,21 @@ def main():
 
     args = parser.parse_args()
 
-    audio_path = str(Path(args.audio).resolve())
-    if not Path(audio_path).exists():
-        print(f"Error: file not found: {audio_path}", file=sys.stderr)
-        sys.exit(1)
+    # Resolve input: YouTube URL or local file
+    yt_tmp_dir = None
+    if is_youtube_url(args.audio):
+        yt_audio_path, yt_title = download_youtube_audio(args.audio)
+        audio_path = yt_audio_path
+        yt_tmp_dir = os.path.dirname(yt_audio_path)
+        # Default output file to the video title when not explicitly set
+        if not args.output:
+            ext = {"text": "txt", "vtt": "vtt", "json": "json"}[args.format]
+            args.output = f"{_sanitize_filename(yt_title)}.{ext}"
+    else:
+        audio_path = str(Path(args.audio).resolve())
+        if not Path(audio_path).exists():
+            print(f"Error: file not found: {audio_path}", file=sys.stderr)
+            sys.exit(1)
 
     # Prepare audio
     print("Preparing audio...", file=sys.stderr)
@@ -454,6 +540,8 @@ def main():
     finally:
         if tmp_created and os.path.exists(wav_path):
             os.unlink(wav_path)
+        if yt_tmp_dir and os.path.isdir(yt_tmp_dir):
+            shutil.rmtree(yt_tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
