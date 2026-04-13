@@ -14,7 +14,7 @@ Transcribe audio files with word-level timestamps and automatic speaker identifi
 - **Multiple output formats** — Plain text, VTT subtitles, or JSON
 - **Auto language detection** — Supports 99+ languages
 - **Colored terminal output** — Speaker-coded output for easy reading
-- **YouTube support** — Transcribe directly from a YouTube URL (requires [yt-dlp](https://github.com/yt-dlp/yt-dlp))
+- **YouTube support** — Transcribe directly from a YouTube URL or playlist (requires [yt-dlp](https://github.com/yt-dlp/yt-dlp))
 
 ## Installation
 
@@ -65,6 +65,18 @@ opensono "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
 The transcript is saved to a file named after the video title (e.g. `My Video Title.txt`).
+
+### Transcribe a YouTube playlist
+
+```bash
+opensono "https://www.youtube.com/playlist?list=PLAYLIST_ID"
+```
+
+Each video in the playlist is downloaded, transcribed, and saved to a directory named after the playlist. Use `-o` to specify a custom output directory:
+
+```bash
+opensono "https://www.youtube.com/playlist?list=PLAYLIST_ID" -o my_transcripts
+```
 
 ### Transcription only (no diarization)
 
@@ -123,7 +135,7 @@ python -m opensono audio.wav
 | `--compute-type` | `float16` | Precision (`float16`, `int8`, `float32`) |
 | `--language` | auto-detect | Language code (e.g. `en`, `fr`, `de`) |
 | `--format`, `-f` | `text` | Output format (`text`, `vtt`, `json`) |
-| `--output`, `-o` | stdout | Output file path |
+| `--output`, `-o` | stdout | Output file path (or directory for playlists) |
 | `--no-diarize` | off | Skip speaker diarization |
 
 ## Output formats

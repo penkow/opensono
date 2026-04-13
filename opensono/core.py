@@ -345,10 +345,19 @@ _YOUTUBE_RE = re.compile(
     r"https?://(www\.|m\.|music\.)?(youtube\.com/(watch|shorts|live|embed)|youtu\.be/)",
 )
 
+_YOUTUBE_PLAYLIST_RE = re.compile(
+    r"https?://(www\.|m\.|music\.)?youtube\.com/playlist\?list=",
+)
+
 
 def is_youtube_url(s: str) -> bool:
-    """Return True if *s* looks like a YouTube URL."""
-    return bool(_YOUTUBE_RE.match(s))
+    """Return True if *s* looks like a YouTube URL (single video)."""
+    return bool(_YOUTUBE_RE.match(s)) and not is_youtube_playlist_url(s)
+
+
+def is_youtube_playlist_url(s: str) -> bool:
+    """Return True if *s* looks like a YouTube playlist URL."""
+    return bool(_YOUTUBE_PLAYLIST_RE.match(s))
 
 
 def _sanitize_filename(name: str) -> str:
@@ -409,6 +418,50 @@ def download_youtube_audio(url: str) -> tuple[str, str]:
     return audio_file, title
 
 
+def get_playlist_entries(url: str) -> tuple[list[tuple[str, str]], str]:
+    """Fetch video URLs and titles from a YouTube playlist.
+
+    Returns ``([(video_url, title), ...], playlist_title)``.
+    """
+    if not shutil.which("yt-dlp"):
+        print(
+            "Error: yt-dlp is required for YouTube URLs.\n"
+            "  Install it with:  pip install yt-dlp",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Get playlist title
+    proc = subprocess.run(
+        ["yt-dlp", "--flat-playlist", "--print", "playlist_title",
+         "--playlist-items", "1", url],
+        capture_output=True, text=True,
+    )
+    playlist_title = proc.stdout.strip() or "playlist"
+
+    # Get all video URLs and titles
+    proc = subprocess.run(
+        ["yt-dlp", "--flat-playlist", "--print", "url", "--print", "title", url],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        print(f"Error fetching playlist info: {proc.stderr.strip()}", file=sys.stderr)
+        sys.exit(1)
+
+    lines = proc.stdout.strip().splitlines()
+    if len(lines) < 2:
+        print("Error: playlist appears to be empty", file=sys.stderr)
+        sys.exit(1)
+
+    entries: list[tuple[str, str]] = []
+    for i in range(0, len(lines) - 1, 2):
+        video_url = lines[i].strip()
+        title = lines[i + 1].strip()
+        entries.append((video_url, title))
+
+    return entries, playlist_title
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -432,6 +485,60 @@ def print_colored(chunks: list[TranscriptChunk]) -> None:
         print()
 
 
+def _transcribe_file(
+    audio_path: str,
+    whisper_model: WhisperModel,
+    diar_model,
+    *,
+    language: str | None,
+    fmt: str,
+    output_path: str | None,
+) -> None:
+    """Run the full transcribe + diarize + output pipeline on a single audio file."""
+    print("Preparing audio...", file=sys.stderr)
+    wav_path = ensure_wav_16k_mono(audio_path)
+    tmp_created = wav_path != audio_path
+
+    try:
+        # Transcribe
+        print("Transcribing...", file=sys.stderr)
+        words, detected_lang = transcribe_audio(whisper_model, wav_path, language)
+        print(f"  {len(words)} words transcribed", file=sys.stderr)
+
+        # Diarize
+        speaker_segments: list[SpeakerSegment] = []
+        if diar_model is not None:
+            print("Diarizing...", file=sys.stderr)
+            speaker_segments = diarize_audio(diar_model, wav_path)
+            print(f"  {len(speaker_segments)} speaker segments found", file=sys.stderr)
+
+        # Merge
+        words_with_speakers = merge_speakers_with_words(speaker_segments, words)
+        chunks = group_words_into_chunks(words_with_speakers)
+        chunks = merge_consecutive_chunks(chunks)
+
+        # Output
+        if fmt == "vtt":
+            result = output_vtt(chunks)
+        elif fmt == "json":
+            result = output_json(chunks)
+        else:
+            result = output_text(chunks)
+
+        if output_path:
+            Path(output_path).write_text(result)
+            print(f"Saved to {output_path}", file=sys.stderr)
+        else:
+            if fmt == "text" and sys.stdout.isatty():
+                print_colored(chunks)
+            else:
+                print(result)
+
+    finally:
+        if tmp_created and os.path.exists(wav_path):
+            os.unlink(wav_path)
+
+
 def main():
     from opensono import __version__
 
@@ -439,7 +546,7 @@ def main():
         description="Transcribe and diarize audio using Faster Whisper + NeMo Sortformer",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("audio", help="Path to audio file or YouTube URL")
+    parser.add_argument("audio", help="Path to audio file, YouTube URL, or YouTube playlist URL")
     parser.add_argument(
         "--model-size", default="large-v3",
         help="Whisper model size (default: large-v3)",
@@ -458,7 +565,7 @@ def main():
     )
     parser.add_argument(
         "--output", "-o", default=None,
-        help="Output file path. Prints to stdout if not set.",
+        help="Output file path (or directory for playlists). Prints to stdout if not set.",
     )
     parser.add_argument(
         "--format", "-f", default="text",
@@ -472,15 +579,67 @@ def main():
 
     args = parser.parse_args()
 
-    # Resolve input: YouTube URL or local file
+    ext = {"text": "txt", "vtt": "vtt", "json": "json"}[args.format]
+
+    # Load models once up-front
+    print(f"Loading Whisper model ({args.model_size})...", file=sys.stderr)
+    whisper = WhisperModel(
+        args.model_size, device=args.device, compute_type=args.compute_type
+    )
+
+    diar_model = None
+    if not args.no_diarize:
+        print("Loading diarization model...", file=sys.stderr)
+        diar_model = load_diarization_model()
+
+    # --- YouTube playlist ---
+    if is_youtube_playlist_url(args.audio):
+        entries, playlist_title = get_playlist_entries(args.audio)
+        print(
+            f"Playlist: {playlist_title} ({len(entries)} videos)",
+            file=sys.stderr,
+        )
+
+        out_dir = args.output or _sanitize_filename(playlist_title)
+        os.makedirs(out_dir, exist_ok=True)
+
+        for idx, (video_url, title) in enumerate(entries, 1):
+            print(
+                f"\n{'='*60}\n[{idx}/{len(entries)}] {title}\n{'='*60}",
+                file=sys.stderr,
+            )
+            yt_tmp_dir = None
+            try:
+                yt_audio_path, yt_title = download_youtube_audio(video_url)
+                yt_tmp_dir = os.path.dirname(yt_audio_path)
+                out_file = os.path.join(
+                    out_dir, f"{_sanitize_filename(yt_title)}.{ext}"
+                )
+                _transcribe_file(
+                    yt_audio_path,
+                    whisper,
+                    diar_model,
+                    language=args.language,
+                    fmt=args.format,
+                    output_path=out_file,
+                )
+            except SystemExit:
+                print(f"Skipping (download failed): {title}", file=sys.stderr)
+                continue
+            finally:
+                if yt_tmp_dir and os.path.isdir(yt_tmp_dir):
+                    shutil.rmtree(yt_tmp_dir, ignore_errors=True)
+
+        print(f"\nAll transcripts saved to {out_dir}/", file=sys.stderr)
+        return
+
+    # --- Single YouTube video ---
     yt_tmp_dir = None
     if is_youtube_url(args.audio):
         yt_audio_path, yt_title = download_youtube_audio(args.audio)
         audio_path = yt_audio_path
         yt_tmp_dir = os.path.dirname(yt_audio_path)
-        # Default output file to the video title when not explicitly set
         if not args.output:
-            ext = {"text": "txt", "vtt": "vtt", "json": "json"}[args.format]
             args.output = f"{_sanitize_filename(yt_title)}.{ext}"
     else:
         audio_path = str(Path(args.audio).resolve())
@@ -488,58 +647,16 @@ def main():
             print(f"Error: file not found: {audio_path}", file=sys.stderr)
             sys.exit(1)
 
-    # Prepare audio
-    print("Preparing audio...", file=sys.stderr)
-    wav_path = ensure_wav_16k_mono(audio_path)
-    tmp_created = wav_path != audio_path
-
     try:
-        # Load Whisper
-        print(f"Loading Whisper model ({args.model_size})...", file=sys.stderr)
-        whisper = WhisperModel(
-            args.model_size, device=args.device, compute_type=args.compute_type
+        _transcribe_file(
+            audio_path,
+            whisper,
+            diar_model,
+            language=args.language,
+            fmt=args.format,
+            output_path=args.output,
         )
-
-        # Transcribe
-        print("Transcribing...", file=sys.stderr)
-        words, detected_lang = transcribe_audio(whisper, wav_path, args.language)
-        print(f"  {len(words)} words transcribed", file=sys.stderr)
-
-        # Diarize
-        speaker_segments: list[SpeakerSegment] = []
-        if not args.no_diarize:
-            print("Loading diarization model...", file=sys.stderr)
-            diar_model = load_diarization_model()
-            print("Diarizing...", file=sys.stderr)
-            speaker_segments = diarize_audio(diar_model, wav_path)
-            print(f"  {len(speaker_segments)} speaker segments found", file=sys.stderr)
-
-        # Merge
-        words_with_speakers = merge_speakers_with_words(speaker_segments, words)
-        chunks = group_words_into_chunks(words_with_speakers)
-        chunks = merge_consecutive_chunks(chunks)
-
-        # Output
-        if args.format == "vtt":
-            result = output_vtt(chunks)
-        elif args.format == "json":
-            result = output_json(chunks)
-        else:
-            result = output_text(chunks)
-
-        if args.output:
-            Path(args.output).write_text(result)
-            print(f"Saved to {args.output}", file=sys.stderr)
-        else:
-            # Use colored output for terminal text format
-            if args.format == "text" and sys.stdout.isatty():
-                print_colored(chunks)
-            else:
-                print(result)
-
     finally:
-        if tmp_created and os.path.exists(wav_path):
-            os.unlink(wav_path)
         if yt_tmp_dir and os.path.isdir(yt_tmp_dir):
             shutil.rmtree(yt_tmp_dir, ignore_errors=True)
 
