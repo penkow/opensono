@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Transcribe and diarize audio files using Faster Whisper + NeMo Sortformer.
+Transcribe and diarize audio files using a pluggable ASR backend + NeMo Sortformer.
 
 Produces speaker-attributed transcription with word-level timestamps.
 """
@@ -18,15 +18,13 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from faster_whisper import WhisperModel
 
-
-@dataclass
-class WordTimestamp:
-    text: str
-    start: float
-    end: float
-    speaker_id: int = 0
+from .transcribers import (
+    FasterWhisperTranscriber,
+    ParakeetTranscriber,
+    Transcriber,
+    WordTimestamp,
+)
 
 
 @dataclass
@@ -114,41 +112,6 @@ def diarize_audio(diar_model, audio_path: str) -> list[SpeakerSegment]:
             segments.append(SpeakerSegment(start=start, end=end, speaker_id=speaker_id))
 
     return segments
-
-
-# ---------------------------------------------------------------------------
-# Transcription
-# ---------------------------------------------------------------------------
-
-def transcribe_audio(
-    whisper_model: WhisperModel,
-    audio_path: str,
-    language: str | None = None,
-) -> tuple[list[WordTimestamp], str]:
-    """Transcribe audio and return word-level timestamps."""
-    segments_iter, info = whisper_model.transcribe(
-        audio_path,
-        beam_size=5,
-        word_timestamps=True,
-        language=language,
-    )
-
-    detected_lang = info.language
-    print(
-        f"Detected language: {detected_lang} "
-        f"(probability {info.language_probability:.2f})",
-        file=sys.stderr,
-    )
-
-    words: list[WordTimestamp] = []
-    for segment in segments_iter:
-        if segment.words:
-            for w in segment.words:
-                words.append(
-                    WordTimestamp(text=w.word, start=w.start, end=w.end)
-                )
-
-    return words, detected_lang
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +450,7 @@ def print_colored(chunks: list[TranscriptChunk]) -> None:
 
 def _transcribe_file(
     audio_path: str,
-    whisper_model: WhisperModel,
+    transcriber: Transcriber,
     diar_model,
     *,
     language: str | None,
@@ -502,7 +465,7 @@ def _transcribe_file(
     try:
         # Transcribe
         print("Transcribing...", file=sys.stderr)
-        words, detected_lang = transcribe_audio(whisper_model, wav_path, language)
+        words, detected_lang = transcriber.transcribe(wav_path, language)
         print(f"  {len(words)} words transcribed", file=sys.stderr)
 
         # Diarize
@@ -543,25 +506,33 @@ def main():
     from opensono import __version__
 
     parser = argparse.ArgumentParser(
-        description="Transcribe and diarize audio using Faster Whisper + NeMo Sortformer",
+        description="Transcribe and diarize audio using a pluggable ASR backend + NeMo Sortformer",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("audio", help="Path to audio file, YouTube URL, or YouTube playlist URL")
     parser.add_argument(
-        "--model-size", default="large-v3",
-        help="Whisper model size (default: large-v3)",
+        "--backend", default="parakeet",
+        choices=["parakeet", "faster-whisper"],
+        help="Transcription backend (default: parakeet)",
+    )
+    parser.add_argument(
+        "--model", "--model-size", dest="model", default=None,
+        help="Model name. Defaults: 'nvidia/parakeet-ctc-0.6b' for parakeet, "
+             "'large-v3' for faster-whisper.",
     )
     parser.add_argument(
         "--device", default="cuda", choices=["cuda", "cpu"],
-        help="Device to run Whisper on (default: cuda)",
+        help="Device to run the transcription model on (default: cuda)",
     )
     parser.add_argument(
         "--compute-type", default="float16",
-        help="Compute type for Whisper (default: float16, use int8 for CPU)",
+        help="Compute type for faster-whisper (default: float16, use int8 for CPU). "
+             "Ignored by other backends.",
     )
     parser.add_argument(
         "--language", default=None,
-        help="Language code (e.g. en). Auto-detected if not set.",
+        help="Language code (e.g. en). Auto-detected by faster-whisper if not set. "
+             "Ignored by parakeet (English-only).",
     )
     parser.add_argument(
         "--output", "-o", default=None,
@@ -582,10 +553,22 @@ def main():
     ext = {"text": "txt", "vtt": "vtt", "json": "json"}[args.format]
 
     # Load models once up-front
-    print(f"Loading Whisper model ({args.model_size})...", file=sys.stderr)
-    whisper = WhisperModel(
-        args.model_size, device=args.device, compute_type=args.compute_type
-    )
+    transcriber: Transcriber
+    if args.backend == "parakeet":
+        model_name = args.model or "nvidia/parakeet-ctc-0.6b"
+        print(f"Loading Parakeet model ({model_name})...", file=sys.stderr)
+        transcriber = ParakeetTranscriber(
+            model_name=model_name,
+            device=args.device,
+        )
+    else:
+        model_size = args.model or "large-v3"
+        print(f"Loading Whisper model ({model_size})...", file=sys.stderr)
+        transcriber = FasterWhisperTranscriber(
+            model_size=model_size,
+            device=args.device,
+            compute_type=args.compute_type,
+        )
 
     diar_model = None
     if not args.no_diarize:
@@ -617,7 +600,7 @@ def main():
                 )
                 _transcribe_file(
                     yt_audio_path,
-                    whisper,
+                    transcriber,
                     diar_model,
                     language=args.language,
                     fmt=args.format,
@@ -650,7 +633,7 @@ def main():
     try:
         _transcribe_file(
             audio_path,
-            whisper,
+            transcriber,
             diar_model,
             language=args.language,
             fmt=args.format,

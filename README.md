@@ -2,17 +2,17 @@
 
 **Open-source voice AI.**
 
-Transcribe audio files with word-level timestamps and automatic speaker identification using [Faster Whisper](https://github.com/SYSTRAN/faster-whisper) and [NVIDIA NeMo Sortformer](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/speaker_diarization/intro.html).
+Transcribe audio files with word-level timestamps and automatic speaker identification using [NVIDIA Parakeet CTC](https://huggingface.co/nvidia/parakeet-ctc-0.6b) (default) or [Faster Whisper](https://github.com/SYSTRAN/faster-whisper), combined with [NVIDIA NeMo Sortformer](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/speaker_diarization/intro.html) diarization.
 
 > This is the Python CLI companion to [OpenSono WebApp](https://opensono.vercel.app) — the free, browser-based transcription tool.
 
 ## Features
 
-- **Accurate transcription** — Powered by Whisper large-v3
+- **Pluggable ASR backends** — Parakeet CTC 0.6B (default, English) or Faster Whisper (multilingual)
 - **Speaker diarization** — Automatically identifies up to 4 speakers using NVIDIA Sortformer
 - **Word-level timestamps** — Precise timing for every word
 - **Multiple output formats** — Plain text, VTT subtitles, or JSON
-- **Auto language detection** — Supports 99+ languages
+- **Auto language detection** — Supported by the Whisper backend (99+ languages)
 - **Colored terminal output** — Speaker-coded output for easy reading
 - **YouTube support** — Transcribe directly from a YouTube URL or playlist (requires [yt-dlp](https://github.com/yt-dlp/yt-dlp))
 
@@ -102,16 +102,28 @@ opensono recording.wav -f json -o transcript.json
 opensono audio.wav --language en
 ```
 
-### Use a smaller/faster model
+### Switch backend
+
+The default backend is `parakeet` (NVIDIA Parakeet CTC 0.6B, English-only). To use the multilingual Whisper backend:
 
 ```bash
-opensono audio.wav --model-size base
+opensono audio.wav --backend faster-whisper
+```
+
+### Use a different model
+
+```bash
+# A smaller/faster Whisper model
+opensono audio.wav --backend faster-whisper --model base
+
+# A different Parakeet checkpoint
+opensono audio.wav --model nvidia/parakeet-rnnt-1.1b
 ```
 
 ### CPU-only
 
 ```bash
-opensono audio.wav --device cpu --compute-type int8
+opensono audio.wav --backend faster-whisper --device cpu --compute-type int8
 ```
 
 ### Check version
@@ -130,10 +142,11 @@ python -m opensono audio.wav
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--model-size` | `large-v3` | Whisper model size (`tiny`, `base`, `small`, `medium`, `large-v3`) |
+| `--backend` | `parakeet` | Transcription backend (`parakeet`, `faster-whisper`) |
+| `--model` | backend default | Model name (`nvidia/parakeet-ctc-0.6b` for parakeet, `large-v3` for faster-whisper) |
 | `--device` | `cuda` | Compute device (`cuda` or `cpu`) |
-| `--compute-type` | `float16` | Precision (`float16`, `int8`, `float32`) |
-| `--language` | auto-detect | Language code (e.g. `en`, `fr`, `de`) |
+| `--compute-type` | `float16` | Precision for faster-whisper (`float16`, `int8`, `float32`); ignored for parakeet |
+| `--language` | auto-detect | Language code (e.g. `en`, `fr`, `de`); faster-whisper only |
 | `--format`, `-f` | `text` | Output format (`text`, `vtt`, `json`) |
 | `--output`, `-o` | stdout | Output file path (or directory for playlists) |
 | `--no-diarize` | off | Skip speaker diarization |
@@ -178,7 +191,7 @@ WEBVTT
 ## How it works
 
 1. **Audio preprocessing** — Converts input to 16 kHz mono WAV
-2. **Transcription** — Faster Whisper produces word-level timestamps
+2. **Transcription** — Selected backend produces word-level timestamps
 3. **Diarization** — NeMo Sortformer identifies speaker segments
 4. **Merging** — Each word is assigned to a speaker based on temporal overlap
 5. **Grouping** — Consecutive words from the same speaker are combined into chunks
@@ -187,7 +200,8 @@ WEBVTT
 
 | Component | Model | Size |
 |-----------|-------|------|
-| Transcription | [Faster Whisper large-v3](https://huggingface.co/Systran/faster-whisper-large-v3) | ~3 GB |
+| Transcription (default) | [NVIDIA Parakeet CTC 0.6B](https://huggingface.co/nvidia/parakeet-ctc-0.6b) | ~600 MB |
+| Transcription (optional) | [Faster Whisper large-v3](https://huggingface.co/Systran/faster-whisper-large-v3) | ~3 GB |
 | Diarization | [NVIDIA Sortformer 4spk v2.1](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/diar_streaming_sortformer_4spk-v2.1) | ~100 MB |
 
 Models are downloaded automatically on first run and cached locally.
@@ -196,7 +210,7 @@ Models are downloaded automatically on first run and cached locally.
 
 - Python 3.10+
 - CUDA-capable GPU (recommended) or CPU
-- ~4 GB VRAM for GPU inference with large-v3
+- ~2 GB VRAM for Parakeet CTC 0.6B; ~4 GB VRAM for Whisper large-v3
 
 ## Browser version
 

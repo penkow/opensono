@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-05-16
+
+### Added
+
+- Pluggable transcription backend abstraction (`opensono.transcribers`) with a `Transcriber` ABC
+- NVIDIA Parakeet CTC 0.6B backend (`nvidia/parakeet-ctc-0.6b`) — now the default
+- `--backend {parakeet,faster-whisper}` CLI flag
+
+### Changed
+
+- Default transcription backend is now Parakeet CTC 0.6B (was Faster Whisper large-v3)
+- Renamed `--model-size` to `--model` (old flag kept as an alias for backward compatibility)
+- `core.py` decoupled from `faster_whisper.WhisperModel`; transcription goes through the `Transcriber` interface
+
 ## [0.1.6] - 2026-04-13
 
 ### Added
