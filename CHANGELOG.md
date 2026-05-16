@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-05-16
+
+### Changed
+
+- **Parakeet long-audio default is now manual waveform chunking again.**
+  FrameBatchASR with our previous config did not return usable word-level
+  timestamps, which caused garbled output for hour-long audio (sparse words
+  fake-distributed across the timeline).
+- Renamed the opt-in flag: `--manual-chunking` → `--native-chunking`. The
+  new flag opts *into* the experimental FrameBatchASR path (off by default).
+- Native path now uses sensible FrameBatchASR config (30s frames + 4s
+  context) instead of the previous 300s frames.
+
+### Removed
+
+- The silent "evenly-distribute words" fallback when FrameBatchASR returns
+  no timestamps. The native path now prints a clear warning and returns an
+  empty word list instead of fabricating timing.
+
 ## [0.2.5] - 2026-05-16
 
 ### Added

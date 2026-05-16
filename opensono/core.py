@@ -558,9 +558,10 @@ def main():
              "(default: 300). Lower this if you hit OOM. Ignored by faster-whisper.",
     )
     parser.add_argument(
-        "--manual-chunking", action="store_true",
-        help="Use manual waveform chunking instead of NeMo's FrameBatchASR "
-             "(parakeet-only). Slower but produces precise word-level timestamps.",
+        "--native-chunking", action="store_true",
+        help="Experimental: route long audio through NeMo's FrameBatchASR "
+             "instead of manual waveform chunking (parakeet-only). May produce "
+             "no word-level timestamps depending on your NeMo build.",
     )
 
     args = parser.parse_args()
@@ -581,7 +582,7 @@ def main():
             model_name=model_name,
             device=args.device,
             chunk_len_s=args.chunk_len,
-            manual_chunking=args.manual_chunking,
+            native_chunking=args.native_chunking,
         )
     else:
         model_size = args.model or "large-v3"
