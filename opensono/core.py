@@ -6,6 +6,7 @@ Produces speaker-attributed transcription with word-level timestamps.
 """
 
 import argparse
+import gc
 import json
 import re
 import shutil
@@ -263,6 +264,19 @@ def ensure_wav_16k_mono(audio_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Memory helpers
+# ---------------------------------------------------------------------------
+
+def _release_gpu_memory() -> None:
+    """Run GC and clear the CUDA allocator cache (no-op on CPU)."""
+    import torch
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+# ---------------------------------------------------------------------------
 # Output formatters
 # ---------------------------------------------------------------------------
 
@@ -455,6 +469,7 @@ def _transcribe_file(
         print("Transcribing...", file=sys.stderr)
         words, detected_lang = transcriber.transcribe(wav_path, language)
         print(f"  {len(words)} words transcribed", file=sys.stderr)
+        _release_gpu_memory()
 
         # Diarize
         speaker_segments: list[SpeakerSegment] = []
@@ -462,6 +477,7 @@ def _transcribe_file(
             print("Diarizing...", file=sys.stderr)
             speaker_segments = diarize_audio(diar_model, wav_path)
             print(f"  {len(speaker_segments)} speaker segments found", file=sys.stderr)
+            _release_gpu_memory()
 
         # Merge
         words_with_speakers = merge_speakers_with_words(speaker_segments, words)
@@ -569,73 +585,80 @@ def main():
         print("Loading diarization model...", file=sys.stderr)
         diar_model = load_diarization_model(device=args.device)
 
-    # --- YouTube playlist ---
-    if is_youtube_playlist_url(args.audio):
-        entries, playlist_title = get_playlist_entries(args.audio)
-        print(
-            f"Playlist: {playlist_title} ({len(entries)} videos)",
-            file=sys.stderr,
-        )
-
-        out_dir = args.output or _sanitize_filename(playlist_title)
-        os.makedirs(out_dir, exist_ok=True)
-
-        for idx, (video_url, title) in enumerate(entries, 1):
+    try:
+        # --- YouTube playlist ---
+        if is_youtube_playlist_url(args.audio):
+            entries, playlist_title = get_playlist_entries(args.audio)
             print(
-                f"\n{'='*60}\n[{idx}/{len(entries)}] {title}\n{'='*60}",
+                f"Playlist: {playlist_title} ({len(entries)} videos)",
                 file=sys.stderr,
             )
-            yt_tmp_dir = None
-            try:
-                yt_audio_path, yt_title = download_youtube_audio(video_url)
-                yt_tmp_dir = os.path.dirname(yt_audio_path)
-                out_file = os.path.join(
-                    out_dir, f"{_sanitize_filename(yt_title)}.{ext}"
+
+            out_dir = args.output or _sanitize_filename(playlist_title)
+            os.makedirs(out_dir, exist_ok=True)
+
+            for idx, (video_url, title) in enumerate(entries, 1):
+                print(
+                    f"\n{'='*60}\n[{idx}/{len(entries)}] {title}\n{'='*60}",
+                    file=sys.stderr,
                 )
-                _transcribe_file(
-                    yt_audio_path,
-                    transcriber,
-                    diar_model,
-                    language=args.language,
-                    fmt=args.format,
-                    output_path=out_file,
-                )
-            except SystemExit:
-                print(f"Skipping (download failed): {title}", file=sys.stderr)
-                continue
-            finally:
-                if yt_tmp_dir and os.path.isdir(yt_tmp_dir):
-                    shutil.rmtree(yt_tmp_dir, ignore_errors=True)
+                yt_tmp_dir = None
+                try:
+                    yt_audio_path, yt_title = download_youtube_audio(video_url)
+                    yt_tmp_dir = os.path.dirname(yt_audio_path)
+                    out_file = os.path.join(
+                        out_dir, f"{_sanitize_filename(yt_title)}.{ext}"
+                    )
+                    _transcribe_file(
+                        yt_audio_path,
+                        transcriber,
+                        diar_model,
+                        language=args.language,
+                        fmt=args.format,
+                        output_path=out_file,
+                    )
+                except SystemExit:
+                    print(f"Skipping (download failed): {title}", file=sys.stderr)
+                    continue
+                finally:
+                    if yt_tmp_dir and os.path.isdir(yt_tmp_dir):
+                        shutil.rmtree(yt_tmp_dir, ignore_errors=True)
+                    _release_gpu_memory()
 
-        print(f"\nAll transcripts saved to {out_dir}/", file=sys.stderr)
-        return
+            print(f"\nAll transcripts saved to {out_dir}/", file=sys.stderr)
+            return
 
-    # --- Single YouTube video ---
-    yt_tmp_dir = None
-    if is_youtube_url(args.audio):
-        yt_audio_path, yt_title = download_youtube_audio(args.audio)
-        audio_path = yt_audio_path
-        yt_tmp_dir = os.path.dirname(yt_audio_path)
-        if not args.output:
-            args.output = f"{_sanitize_filename(yt_title)}.{ext}"
-    else:
-        audio_path = str(Path(args.audio).resolve())
-        if not Path(audio_path).exists():
-            print(f"Error: file not found: {audio_path}", file=sys.stderr)
-            sys.exit(1)
+        # --- Single YouTube video ---
+        yt_tmp_dir = None
+        if is_youtube_url(args.audio):
+            yt_audio_path, yt_title = download_youtube_audio(args.audio)
+            audio_path = yt_audio_path
+            yt_tmp_dir = os.path.dirname(yt_audio_path)
+            if not args.output:
+                args.output = f"{_sanitize_filename(yt_title)}.{ext}"
+        else:
+            audio_path = str(Path(args.audio).resolve())
+            if not Path(audio_path).exists():
+                print(f"Error: file not found: {audio_path}", file=sys.stderr)
+                sys.exit(1)
 
-    try:
-        _transcribe_file(
-            audio_path,
-            transcriber,
-            diar_model,
-            language=args.language,
-            fmt=args.format,
-            output_path=args.output,
-        )
+        try:
+            _transcribe_file(
+                audio_path,
+                transcriber,
+                diar_model,
+                language=args.language,
+                fmt=args.format,
+                output_path=args.output,
+            )
+        finally:
+            if yt_tmp_dir and os.path.isdir(yt_tmp_dir):
+                shutil.rmtree(yt_tmp_dir, ignore_errors=True)
     finally:
-        if yt_tmp_dir and os.path.isdir(yt_tmp_dir):
-            shutil.rmtree(yt_tmp_dir, ignore_errors=True)
+        del transcriber
+        if diar_model is not None:
+            del diar_model
+        _release_gpu_memory()
 
 
 if __name__ == "__main__":
