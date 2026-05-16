@@ -165,6 +165,7 @@ python -m opensono audio.wav
 | `--output`, `-o` | stdout | Output file path (or directory for playlists) |
 | `--no-diarize` | off | Skip speaker diarization |
 | `--chunk-len` | `300` | Parakeet chunk length in seconds for long audio (lower if you hit OOM); ignored by faster-whisper |
+| `--manual-chunking` | off | Use manual waveform chunking instead of NeMo's FrameBatchASR (parakeet-only); produces precise word timestamps at the cost of speed |
 
 ## Output formats
 

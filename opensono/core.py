@@ -557,6 +557,11 @@ def main():
         help="Parakeet chunk length in seconds for long audio "
              "(default: 300). Lower this if you hit OOM. Ignored by faster-whisper.",
     )
+    parser.add_argument(
+        "--manual-chunking", action="store_true",
+        help="Use manual waveform chunking instead of NeMo's FrameBatchASR "
+             "(parakeet-only). Slower but produces precise word-level timestamps.",
+    )
 
     args = parser.parse_args()
 
@@ -576,6 +581,7 @@ def main():
             model_name=model_name,
             device=args.device,
             chunk_len_s=args.chunk_len,
+            manual_chunking=args.manual_chunking,
         )
     else:
         model_size = args.model or "large-v3"
