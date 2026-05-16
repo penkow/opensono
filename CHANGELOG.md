@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-16
+
+### Added
+
+- `[cpu]` and `[gpu]` install extras (`pip install opensono[cpu]` / `[gpu]`)
+- uv-aware `[tool.uv.sources]` config so `uv pip install opensono[cpu]` resolves
+  torch from the PyTorch CPU wheel index automatically — no `--extra-index-url` flag
+- `--device auto` (now the default): picks `cuda` if available, otherwise falls back to `cpu`
+
+### Changed
+
+- Diarization model (`load_diarization_model`) now respects the selected device
+  instead of always loading on CUDA
+
 ## [0.2.0] - 2026-05-16
 
 ### Added

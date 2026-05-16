@@ -18,11 +18,33 @@ Transcribe audio files with word-level timestamps and automatic speaker identifi
 
 ## Installation
 
+### GPU (default)
+
 ```bash
 pip install opensono
+# or, explicit:
+pip install "opensono[gpu]"
 ```
 
-Or install directly from GitHub (latest development version):
+On Linux this installs PyTorch's CUDA-enabled wheel from PyPI.
+
+### CPU-only
+
+With [uv](https://github.com/astral-sh/uv) (recommended — no extra flags needed):
+
+```bash
+uv pip install "opensono[cpu]"
+```
+
+The PyTorch CPU wheel index is baked into `pyproject.toml` via `[tool.uv.sources]` and resolved automatically.
+
+With plain pip, you have to pass the index URL yourself:
+
+```bash
+pip install "opensono[cpu]" --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+### From GitHub (latest development version)
 
 ```bash
 pip install git+https://github.com/penkow/opensono.git
@@ -30,7 +52,7 @@ pip install git+https://github.com/penkow/opensono.git
 
 > **Note:** The NeMo toolkit has additional system dependencies. See the [NeMo installation guide](https://docs.nvidia.com/nemo-framework/user-guide/latest/getting-started.html) for details.
 
-Requires Python 3.10+ and a CUDA-capable GPU (recommended).
+Requires Python 3.10+. A CUDA-capable GPU is recommended but not required — the CLI auto-detects CUDA and falls back to CPU.
 
 ### From source
 
@@ -144,7 +166,7 @@ python -m opensono audio.wav
 |------|---------|-------------|
 | `--backend` | `parakeet` | Transcription backend (`parakeet`, `faster-whisper`) |
 | `--model` | backend default | Model name (`nvidia/parakeet-ctc-0.6b` for parakeet, `large-v3` for faster-whisper) |
-| `--device` | `cuda` | Compute device (`cuda` or `cpu`) |
+| `--device` | `auto` | Compute device (`auto`, `cuda`, `cpu`) — `auto` picks `cuda` if available, else `cpu` |
 | `--compute-type` | `float16` | Precision for faster-whisper (`float16`, `int8`, `float32`); ignored for parakeet |
 | `--language` | auto-detect | Language code (e.g. `en`, `fr`, `de`); faster-whisper only |
 | `--format`, `-f` | `text` | Output format (`text`, `vtt`, `json`) |

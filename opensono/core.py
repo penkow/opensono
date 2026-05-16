@@ -46,7 +46,7 @@ class TranscriptChunk:
 # Diarization
 # ---------------------------------------------------------------------------
 
-def load_diarization_model():
+def load_diarization_model(device: str = "cuda"):
     """Load the NeMo Sortformer diarization model."""
     from nemo.collections.asr.models import SortformerEncLabelModel
 
@@ -54,6 +54,10 @@ def load_diarization_model():
         "nvidia/diar_streaming_sortformer_4spk-v2.1"
     )
     model.eval()
+    if device == "cuda":
+        model = model.cuda()
+    else:
+        model = model.cpu()
 
     # Configure for chunked / streaming-style processing
     model.sortformer_modules.chunk_len = 340
@@ -521,8 +525,9 @@ def main():
              "'large-v3' for faster-whisper.",
     )
     parser.add_argument(
-        "--device", default="cuda", choices=["cuda", "cpu"],
-        help="Device to run the transcription model on (default: cuda)",
+        "--device", default="auto", choices=["auto", "cuda", "cpu"],
+        help="Device to run the transcription model on "
+             "(default: auto — cuda if available, else cpu)",
     )
     parser.add_argument(
         "--compute-type", default="float16",
@@ -552,6 +557,11 @@ def main():
 
     ext = {"text": "txt", "vtt": "vtt", "json": "json"}[args.format]
 
+    if args.device == "auto":
+        import torch
+        args.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Auto-selected device: {args.device}", file=sys.stderr)
+
     # Load models once up-front
     transcriber: Transcriber
     if args.backend == "parakeet":
@@ -573,7 +583,7 @@ def main():
     diar_model = None
     if not args.no_diarize:
         print("Loading diarization model...", file=sys.stderr)
-        diar_model = load_diarization_model()
+        diar_model = load_diarization_model(device=args.device)
 
     # --- YouTube playlist ---
     if is_youtube_playlist_url(args.audio):
