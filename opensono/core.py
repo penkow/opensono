@@ -552,6 +552,11 @@ def main():
         "--no-diarize", action="store_true",
         help="Skip diarization (transcription only)",
     )
+    parser.add_argument(
+        "--chunk-len", type=float, default=300.0,
+        help="Parakeet chunk length in seconds for long audio "
+             "(default: 300). Lower this if you hit OOM. Ignored by faster-whisper.",
+    )
 
     args = parser.parse_args()
 
@@ -570,6 +575,7 @@ def main():
         transcriber = ParakeetTranscriber(
             model_name=model_name,
             device=args.device,
+            chunk_len_s=args.chunk_len,
         )
     else:
         model_size = args.model or "large-v3"

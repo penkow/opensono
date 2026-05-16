@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-05-16
+
+### Added
+
+- Parakeet long-audio chunking — audio longer than `--chunk-len` seconds
+  (default 300) is split into chunks, transcribed one at a time, and stitched
+  back together with global timestamps. Keeps peak VRAM bounded for hour-long files.
+- `--chunk-len` CLI flag to tune chunk size (lower it for tighter GPUs)
+
 ## [0.2.3] - 2026-05-16
 
 ### Fixed
