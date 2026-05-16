@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-05-16
+
+### Changed
+
+- `yt-dlp` is now a hard dependency — YouTube URLs and playlists work out of the box
+- Removed the runtime "yt-dlp is required" error and its install hint
+
 ## [0.2.1] - 2026-05-16
 
 ### Added

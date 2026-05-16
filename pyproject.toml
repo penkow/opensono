@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensono"
-version = "0.2.1"
+version = "0.2.2"
 description = "Open-source audio transcription with speaker diarization"
 readme = "README.md"
 license = "MIT"
@@ -30,6 +30,7 @@ dependencies = [
     "soundfile",
     "librosa",
     "numpy",
+    "yt-dlp",
 ]
 
 [project.optional-dependencies]

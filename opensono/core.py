@@ -341,14 +341,6 @@ def download_youtube_audio(url: str) -> tuple[str, str]:
 
     Returns ``(audio_path, video_title)``.
     """
-    if not shutil.which("yt-dlp"):
-        print(
-            "Error: yt-dlp is required for YouTube URLs.\n"
-            "  Install it with:  pip install yt-dlp",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     # Fetch title
     proc = subprocess.run(
         ["yt-dlp", "--print", "title", url],
@@ -390,14 +382,6 @@ def get_playlist_entries(url: str) -> tuple[list[tuple[str, str]], str]:
 
     Returns ``([(video_url, title), ...], playlist_title)``.
     """
-    if not shutil.which("yt-dlp"):
-        print(
-            "Error: yt-dlp is required for YouTube URLs.\n"
-            "  Install it with:  pip install yt-dlp",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     # Get playlist title
     proc = subprocess.run(
         ["yt-dlp", "--flat-playlist", "--print", "playlist_title",

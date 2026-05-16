@@ -14,7 +14,7 @@ Transcribe audio files with word-level timestamps and automatic speaker identifi
 - **Multiple output formats** — Plain text, VTT subtitles, or JSON
 - **Auto language detection** — Supported by the Whisper backend (99+ languages)
 - **Colored terminal output** — Speaker-coded output for easy reading
-- **YouTube support** — Transcribe directly from a YouTube URL or playlist (requires [yt-dlp](https://github.com/yt-dlp/yt-dlp))
+- **YouTube support** — Transcribe directly from a YouTube URL or playlist (powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp))
 
 ## Installation
 
@@ -60,14 +60,6 @@ Requires Python 3.10+. A CUDA-capable GPU is recommended but not required — th
 git clone https://github.com/penkow/opensono
 cd opensono
 pip install .
-```
-
-### YouTube support (optional)
-
-To transcribe directly from YouTube URLs, install [yt-dlp](https://github.com/yt-dlp/yt-dlp):
-
-```bash
-pip install yt-dlp
 ```
 
 ## Usage
