@@ -2,7 +2,7 @@
 
 **Open-source voice AI.**
 
-Transcribe audio files with word-level timestamps and automatic speaker identification using [NVIDIA Parakeet CTC](https://huggingface.co/nvidia/parakeet-ctc-0.6b) (default) or [Faster Whisper](https://github.com/SYSTRAN/faster-whisper), combined with [NVIDIA NeMo Sortformer](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/speaker_diarization/intro.html) diarization.
+Transcribe audio files with word-level timestamps and automatic speaker identification using [NVIDIA Parakeet CTC](https://huggingface.co/nvidia/parakeet-ctc-0.6b) (and [other transcription backends](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard)), combined with [NVIDIA NeMo Sortformer](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/asr/speaker_diarization/intro.html) diarization.
 
 > This is the Python CLI companion to [OpenSono WebApp](https://opensono.vercel.app) — the free, browser-based transcription tool.
 
